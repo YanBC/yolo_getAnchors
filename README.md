@@ -1,2 +1,4 @@
 # yolo_getAnchors
-find the proper anchors for your dataset
+Find the proper anchors for your dataset
+
+Usage: `python3 yolo_getAnchors.py -h`
