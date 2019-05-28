@@ -2,6 +2,7 @@ import os
 import numpy as np
 import cv2 as cv
 import argparse
+import sys
 from custom_kmeans import KMeans
 
 ##########################
@@ -61,14 +62,18 @@ def avg_IOU(X, centroids):
 # main functions
 ############################
 
-def getAnnos(dirPath, showStats=False):
+def getAnnos(dirPath, image_shape=None, showStats=False):
     '''
     Get box sizes
 
     INPUT:
         dirPath <string>: path to image and annotation directory
         
-        showStats <bool>: specified if show stats
+        image_shape <pairs of int>: yolo network input image shape, (width, height);
+                                    specified if images are shrunk before feeding to 
+                                    yolo network
+
+        showStats <bool>: whether to show stats or not
 
     OUTPUT:
         ret <dictionary>: different classes as keys, a list of boxes 
@@ -101,20 +106,29 @@ def getAnnos(dirPath, showStats=False):
     for annoFile in annoFiles:
 
         # get image informations
-        # convert yolo annotation to pixel annotation
         imagePath = os.path.join(dirPath, annoFile.split('.')[0] + '.jpg')
         image = cv.imread(imagePath)
         if image is None:
             print('Error in getAnnos(%s): %s not exist' % (dirPath, imagePath))
             continue
         height, width, _ = image.shape
+
+        # if image_shape is specified, shrink image width and height
+        # else, do nothing
+        if image_shape:
+            scale_height = height / image_shape[1]
+            scale_width = width / image_shape[0]
+        else:
+            scale_height = 1
+            scale_width = 1
         
+        # read annotation
         with open(os.path.join(dirPath, annoFile), 'r') as tmp:
             line = tmp.readline().strip()
             while (line != ''):
                 c, x, y, w, h = line.split(' ')
-                tmp_w = float(w) * width
-                tmp_h = float(h) * height
+                tmp_w = float(w) * width / scale_width
+                tmp_h = float(h) * height / scale_height
 
                 if c not in ret.keys():
                     ret[c] = [(tmp_w, tmp_h)]
@@ -158,13 +172,24 @@ def getAnchors(X, k):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description='This script claculates a set of anchors of the given size. It uses kmeans as described in the paper. See https://arxiv.org/pdf/1612.08242.pdf for more details.')
-    p.add_argument('clusters', help='Number of clusters. Normally this should be in the range of 3 to 9 (YOLOv3 uses 9 anchors)')
     p.add_argument('imageDir', help='Path to image directory. This directory should contains all the images and yolo annotations.')
+    p.add_argument('clusters', help='Number of clusters. Normally this should be in the range of 3 to 9 (YOLOv3 uses 9 anchors)')
     p.add_argument('--stats', action='store_true', help='Show annotations stats')
+    p.add_argument('--width', help='yolo network shrunk input image width; you have to specify both -w and -h to use this option; DEFAULT: No shrinking')
+    p.add_argument('--height', help='yolo network shrunk input image height; you have to specify both -w and -h to use this option; DEFAULT: No shrinking')
     args = p.parse_args()
 
+    # check args.width and args.height options
+    if (args.width and not args.height) or (not args.width and args.height):
+        print("\nYou should use both --width and --height to make it effective")
+        print("See <python3 %s -h> for more informations" % sys.argv[0])
+        exit(-1)
+
     # Get all annotated bounding boxes
-    bboxes = getAnnos(args.imageDir, args.stats)
+    if args.width and args.height:
+        bboxes = getAnnos(args.imageDir, image_shape=(int(args.width), int(args.height)), showStats=args.stats)
+    else:
+        bboxes = getAnnos(args.imageDir, showStats=args.stats)
     allboxs = []
     for key in bboxes.keys():
         allboxs = allboxs + bboxes[key]
@@ -189,11 +214,3 @@ if __name__ == '__main__':
     tmp = tmp[(tmp[:,0] * tmp[:,1]).argsort()]
     for i in range(len(tmp)):
         print(np.array(tmp[i]).astype(int))
-
-
-
-
-
-
-
-
